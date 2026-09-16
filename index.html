@@ -180,6 +180,7 @@
 
 <div class="controls">
   <button class="primary" id="startBtn">Avvia fotocamera</button>
+  <button id="pauseBtn" disabled>Pausa</button>
   <button id="switchBtn">Cambia fotocamera</button>
   <button id="resetBtn">Azzera</button>
 </div>
@@ -204,6 +205,7 @@ const countEl = document.getElementById('countValue');
 const stateEl = document.getElementById('stateValue');
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
+const pauseBtn = document.getElementById('pauseBtn');
 const switchBtn = document.getElementById('switchBtn');
 const resetBtn = document.getElementById('resetBtn');
 const openSlider = document.getElementById('openSlider');
@@ -240,6 +242,7 @@ function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const lm = results.multiHandLandmarks[0];
 
+    // disegna i punti chiave essenziali
     ctx.fillStyle = 'rgba(91,141,250,0.9)';
     [4, 8, 0, 9].forEach(i => {
       ctx.beginPath();
@@ -285,19 +288,22 @@ async function startCamera() {
     });
     hands.setOptions({
       maxNumHands: 1,
-      modelComplexity: 1,
+      modelComplexity: 0,
       minDetectionConfidence: 0.6,
       minTrackingConfidence: 0.6
     });
     hands.onResults(onResults);
   }
 
+  let frameCount = 0;
   camera = new Camera(video, {
     onFrame: async () => {
+      frameCount++;
+      if (frameCount % 2 === 0) return; // salta un fotogramma su due per risparmiare batteria
       await hands.send({ image: video });
     },
-    width: 480,
-    height: 640,
+    width: 320,
+    height: 426,
     facingMode: facingMode
   });
 
@@ -313,12 +319,25 @@ async function start() {
     await startCamera();
     running = true;
     startBtn.textContent = 'Fotocamera attiva';
+    pauseBtn.disabled = false;
     statusEl.textContent = 'Inquadra la mano con pollice e indice vicini.';
   } catch (err) {
     statusEl.textContent = 'Errore fotocamera: ' + (err && err.message ? err.message : err);
     startBtn.disabled = false;
     startBtn.textContent = 'Avvia fotocamera';
   }
+}
+
+function pause() {
+  if (!running) return;
+  try {
+    if (camera) camera.stop();
+  } catch (e) { /* ignore */ }
+  running = false;
+  startBtn.disabled = false;
+  startBtn.textContent = 'Avvia fotocamera';
+  pauseBtn.disabled = true;
+  statusEl.textContent = 'Fotocamera in pausa.';
 }
 
 async function switchCamera() {
@@ -360,6 +379,7 @@ resetBtn.addEventListener('click', () => {
 });
 
 startBtn.addEventListener('click', start);
+pauseBtn.addEventListener('click', pause);
 switchBtn.addEventListener('click', switchCamera);
 </script>
 
