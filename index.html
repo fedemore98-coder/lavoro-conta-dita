@@ -97,7 +97,7 @@
     letter-spacing: 0.04em;
   }
   .card .value {
-    font-size: 2rem;
+    font-size: 1.55rem;
     font-weight: 700;
     margin-top: 4px;
   }
@@ -176,6 +176,10 @@
     <div class="label">Stato</div>
     <div class="value" id="stateValue">--</div>
   </div>
+  <div class="card">
+    <div class="label">Cicli/min</div>
+    <div class="value" id="speedValue">0.0</div>
+  </div>
 </div>
 
 <div class="controls">
@@ -203,6 +207,7 @@ const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
 const countEl = document.getElementById('countValue');
 const stateEl = document.getElementById('stateValue');
+const speedEl = document.getElementById('speedValue');
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
@@ -219,6 +224,19 @@ let camera = null;
 let hands = null;
 let running = false;
 let facingMode = 'user'; // 'user' = anteriore, 'environment' = posteriore
+let cumulativeActiveMs = 0;
+let resumeTimestamp = null;
+let speedInterval = null;
+
+function getActiveMs() {
+  return cumulativeActiveMs + (resumeTimestamp ? Date.now() - resumeTimestamp : 0);
+}
+
+function updateSpeedDisplay() {
+  const activeMinutes = getActiveMs() / 60000;
+  const speed = activeMinutes > (1 / 60) ? (count / activeMinutes) : 0;
+  speedEl.textContent = speed.toFixed(1);
+}
 
 function applyMirror() {
   const shouldMirror = facingMode === 'user';
@@ -269,6 +287,7 @@ function onResults(results) {
       state = 'CHIUSO';
       count += 1;
       countEl.textContent = count;
+      updateSpeedDisplay();
     }
 
     stateEl.textContent = state;
@@ -320,6 +339,8 @@ async function start() {
     running = true;
     startBtn.textContent = 'Fotocamera attiva';
     pauseBtn.disabled = false;
+    resumeTimestamp = Date.now();
+    if (!speedInterval) speedInterval = setInterval(updateSpeedDisplay, 1000);
     statusEl.textContent = 'Inquadra la mano con pollice e indice vicini.';
   } catch (err) {
     statusEl.textContent = 'Errore fotocamera: ' + (err && err.message ? err.message : err);
@@ -334,6 +355,15 @@ function pause() {
     if (camera) camera.stop();
   } catch (e) { /* ignore */ }
   running = false;
+  if (resumeTimestamp) {
+    cumulativeActiveMs += Date.now() - resumeTimestamp;
+    resumeTimestamp = null;
+  }
+  if (speedInterval) {
+    clearInterval(speedInterval);
+    speedInterval = null;
+  }
+  updateSpeedDisplay();
   startBtn.disabled = false;
   startBtn.textContent = 'Avvia fotocamera';
   pauseBtn.disabled = true;
@@ -373,9 +403,12 @@ async function switchCamera() {
 resetBtn.addEventListener('click', () => {
   count = 0;
   state = 'CHIUSO';
+  cumulativeActiveMs = 0;
+  if (running) resumeTimestamp = Date.now();
   countEl.textContent = count;
   stateEl.textContent = '--';
   stateEl.className = 'value';
+  updateSpeedDisplay();
 });
 
 startBtn.addEventListener('click', start);
