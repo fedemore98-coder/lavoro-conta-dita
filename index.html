@@ -73,8 +73,7 @@
     height: 100%;
     object-fit: cover;
   }
-  video { transform: scaleX(-1); }
-  canvas { transform: scaleX(-1); }
+  video.mirror, canvas.mirror { transform: scaleX(-1); }
 
   .stats {
     width: 100%;
@@ -181,6 +180,7 @@
 
 <div class="controls">
   <button class="primary" id="startBtn">Avvia fotocamera</button>
+  <button id="switchBtn">Cambia fotocamera</button>
   <button id="resetBtn">Azzera</button>
 </div>
 
@@ -204,6 +204,7 @@ const countEl = document.getElementById('countValue');
 const stateEl = document.getElementById('stateValue');
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
+const switchBtn = document.getElementById('switchBtn');
 const resetBtn = document.getElementById('resetBtn');
 const openSlider = document.getElementById('openSlider');
 const closeSlider = document.getElementById('closeSlider');
@@ -215,6 +216,14 @@ let state = 'CHIUSO';
 let camera = null;
 let hands = null;
 let running = false;
+let facingMode = 'user'; // 'user' = anteriore, 'environment' = posteriore
+
+function applyMirror() {
+  const shouldMirror = facingMode === 'user';
+  video.classList.toggle('mirror', shouldMirror);
+  canvas.classList.toggle('mirror', shouldMirror);
+}
+applyMirror();
 
 openSlider.addEventListener('input', () => openLbl.textContent = openSlider.value);
 closeSlider.addEventListener('input', () => closeLbl.textContent = closeSlider.value);
@@ -267,12 +276,10 @@ function onResults(results) {
   }
 }
 
-async function start() {
-  if (running) return;
-  startBtn.disabled = true;
-  startBtn.textContent = 'Avvio in corso...';
+async function startCamera() {
+  applyMirror();
 
-  try {
+  if (!hands) {
     hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
     });
@@ -283,17 +290,27 @@ async function start() {
       minTrackingConfidence: 0.6
     });
     hands.onResults(onResults);
+  }
 
-    camera = new Camera(video, {
-      onFrame: async () => {
-        await hands.send({ image: video });
-      },
-      width: 480,
-      height: 640,
-      facingMode: 'environment'
-    });
+  camera = new Camera(video, {
+    onFrame: async () => {
+      await hands.send({ image: video });
+    },
+    width: 480,
+    height: 640,
+    facingMode: facingMode
+  });
 
-    await camera.start();
+  await camera.start();
+}
+
+async function start() {
+  if (running) return;
+  startBtn.disabled = true;
+  startBtn.textContent = 'Avvio in corso...';
+
+  try {
+    await startCamera();
     running = true;
     startBtn.textContent = 'Fotocamera attiva';
     statusEl.textContent = 'Inquadra la mano con pollice e indice vicini.';
@@ -301,6 +318,36 @@ async function start() {
     statusEl.textContent = 'Errore fotocamera: ' + (err && err.message ? err.message : err);
     startBtn.disabled = false;
     startBtn.textContent = 'Avvia fotocamera';
+  }
+}
+
+async function switchCamera() {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+
+  if (!running) {
+    applyMirror();
+    statusEl.textContent = facingMode === 'user'
+      ? 'Fotocamera anteriore selezionata.'
+      : 'Fotocamera posteriore selezionata.';
+    return;
+  }
+
+  switchBtn.disabled = true;
+  statusEl.textContent = 'Cambio fotocamera...';
+  try {
+    if (camera) camera.stop();
+  } catch (e) { /* ignore */ }
+
+  try {
+    await startCamera();
+    statusEl.textContent = 'Inquadra la mano con pollice e indice vicini.';
+  } catch (err) {
+    statusEl.textContent = 'Errore fotocamera: ' + (err && err.message ? err.message : err);
+    running = false;
+    startBtn.disabled = false;
+    startBtn.textContent = 'Avvia fotocamera';
+  } finally {
+    switchBtn.disabled = false;
   }
 }
 
@@ -313,6 +360,7 @@ resetBtn.addEventListener('click', () => {
 });
 
 startBtn.addEventListener('click', start);
+switchBtn.addEventListener('click', switchCamera);
 </script>
 
 </body>
